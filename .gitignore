@@ -1,0 +1,7 @@
+venv
+venv/*
+.vscode
+.vscode/*
+*.pyc
+uvicorn.log
+*.sh

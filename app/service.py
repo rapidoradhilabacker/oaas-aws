@@ -59,6 +59,7 @@ class S3FileService:
         """
         Downloads images specified by URLs in the OaasFileRequest and saves them to S3.
         Sets the Content-Type for each file in S3 based on its InboundDocumentType.
+        If the content_type is a ZIP file, extracts and processes all images within.
         Returns a dictionary mapping the product code to a list of S3 URLs.
         """
         user = request.user
@@ -76,29 +77,74 @@ class S3FileService:
                 try:
                     async with http_session.get(image_url_str) as response:
                         response.raise_for_status()
-                        image_content_bytes = await response.read()
+                        content_bytes = await response.read()
 
                     parsed_url = urlparse(image_url_str)
                     file_name_from_url = os.path.basename(parsed_url.path)
 
-                    if not file_name_from_url:
-                        url_hash_suffix = hashlib.sha1(image_url_str.encode()).hexdigest()[:8]
-                        extension = content_type_value.split('/')[-1]
-                        if extension == "octet-stream":
-                            extension = "bin"
-                        elif extension == "jpeg":
-                            extension = "jpg"
-                        file_name_from_url = f"image_{url_hash_suffix}.{extension}"
+                    # Check if content is a ZIP file
+                    # is_zip = content_type_value == 'application/zip' or content_type_value == 'application/x-zip-compressed' or file_name_from_url.lower().endswith('.zip')
+                    is_zip = image_item.image_type == InboundDocumentType.ZIP
+                    if is_zip:
+                        # Process ZIP file
+                        try:
+                            zip_buffer = io.BytesIO(content_bytes)
+                            with ZipFile(zip_buffer) as zip_ref:
+                                # Process each file in the ZIP
+                                for file_path in zip_ref.namelist():
+                                    if file_path.endswith('/'):  # Skip directories
+                                        continue
+                                        
+                                    try:
+                                        # Extract file content
+                                        file_content = zip_ref.read(file_path)
+                                        original_filename = os.path.basename(file_path)
+                                        
+                                        if not original_filename:
+                                            continue
+                                            
+                                        # Determine content type based on file extension
+                                        file_ext = os.path.splitext(original_filename)[1].lower()
+                                        img_content_type = {
+                                            '.pdf': InboundDocumentType.PDF.value, 
+                                            '.jpg': InboundDocumentType.IMAGE.value,
+                                            '.jpeg': InboundDocumentType.IMAGE.value,
+                                            '.png': InboundDocumentType.PNG.value,
+                                        }.get(file_ext, InboundDocumentType.BINARY.value)
+                                        
+                                        # Upload file to S3
+                                        file_stream = io.BytesIO(file_content)
+                                        s3_url = await self.save_file(
+                                            file_content_stream=file_stream,
+                                            file_name=original_filename,
+                                            directory=base_directory,
+                                            content_type_str=img_content_type
+                                        )
+                                        folder_urls[product_data.tmp_code].append(s3_url)
+                                    except Exception as e:
+                                        folder_urls[product_data.tmp_code].append(f"Error processing file {file_path} from ZIP: {str(e)}")
+                        except BadZipFile:
+                            folder_urls[product_data.tmp_code].append(f"Invalid ZIP file format: {image_url_str}")
+                    else:
+                        # Process as a regular image file
+                        if not file_name_from_url:
+                            url_hash_suffix = hashlib.sha1(image_url_str.encode()).hexdigest()[:8]
+                            extension = content_type_value.split('/')[-1]
+                            if extension == "octet-stream":
+                                extension = "bin"
+                            elif extension == "jpeg":
+                                extension = "jpg"
+                            file_name_from_url = f"image_{url_hash_suffix}.{extension}"
 
-                    image_content_stream = io.BytesIO(image_content_bytes)
-                    
-                    s3_url = await self.save_file(
-                        file_content_stream=image_content_stream,
-                        file_name=file_name_from_url,
-                        directory=base_directory,
-                        content_type_str=content_type_value
-                    )
-                    folder_urls[product_data.tmp_code].append(s3_url)
+                        image_content_stream = io.BytesIO(content_bytes)
+                        
+                        s3_url = await self.save_file(
+                            file_content_stream=image_content_stream,
+                            file_name=file_name_from_url,
+                            directory=base_directory,
+                            content_type_str=content_type_value
+                        )
+                        folder_urls[product_data.tmp_code].append(s3_url)
                 except aiohttp.ClientError as e:
                     folder_urls[product_data.tmp_code].append(f"Error downloading {image_url_str}: {str(e)}")
                 except Exception as e:

@@ -8,7 +8,8 @@ from app.schemas import (
     OaasFolderRequest,
     OaasFileRequest,
     S3BucketContentType,
-    S3UploadResponse
+    S3UploadResponse,
+    S3UploadFileBytesRequest
 )
 router = APIRouter()
 
@@ -51,6 +52,26 @@ async def upload_oaas_files(
     file_urls = {}
     try:
         file_urls = await s3_service.save_oaas_files(request)
+        return {"s3_urls": file_urls}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/upload/oaas/files/v2", response_model=S3UploadResponse)
+async def upload_oaas_files_v2(
+    request: S3UploadFileBytesRequest
+):
+    """
+    Upload binary image data for multiple products to S3.
+    
+    This endpoint accepts binary image data directly instead of URLs,
+    allowing for more efficient file uploads without requiring pre-storage.
+    
+    Returns:
+        S3UploadResponse: A dictionary mapping product codes to lists of S3 URLs
+    """
+    file_urls = {}
+    try:
+        file_urls = await s3_service.upload_product_bytes(request)
         return {"s3_urls": file_urls}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

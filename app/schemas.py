@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel
 
 class InboundDocumentType(str, Enum):
@@ -39,6 +39,29 @@ class OaasFileRequest(BaseModel):
     """
     user: User
     product: Product
+    tenant: str = 'placeorder'
+
+class ImageBytes(BaseModel):
+    """
+    Model for image data with binary content
+    """
+    image_name: str
+    image_type: InboundDocumentType
+    image_bytes: str
+
+class ProductBytes(BaseModel):
+    """
+    Model for product with binary image data
+    """
+    product_code: str
+    images: list[ImageBytes]
+
+class S3UploadFileBytesRequest(BaseModel):
+    """
+    Request model for uploading binary product files
+    """
+    user: User
+    products: list[ProductBytes]
     tenant: str = 'placeorder'
 
 class S3BucketContentType(str, Enum):

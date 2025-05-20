@@ -12,15 +12,17 @@ import os # For os.path.basename
 from zipfile import ZipFile
 from zipfile import BadZipFile
 import time
-
+from typing import Optional
 from app.schemas import (
     S3BucketContentType, 
     User, 
     Product, 
     OaasFolderRequest,
     OaasFileRequest,
-    InboundDocumentType
+    InboundDocumentType,
+    S3UploadFileBytesRequest
 )
+import base64
 
 class S3FileService:
     def __init__(self, bucket_name: str, aws_access_key_id: str, aws_secret_access_key: str):
@@ -310,3 +312,63 @@ class S3FileService:
                 ExpiresIn=600
             )
             return s3_url
+    
+    async def upload_file_bytes(self, file_bytes: bytes, file_name: str, directory: str, content_type_str: Optional[str] = None) -> str:
+        """
+        Save the file bytes to S3 under the provided directory and return the public URL.
+        Optionally sets the Content-Type of the S3 object.
+        """
+        s3_key = self._generate_key(directory, file_name)
+        extra_args = {}
+        if content_type_str:
+            extra_args['ContentType'] = content_type_str
+        
+        async with self.session.client('s3') as s3_client:
+            bucket_location = await s3_client.get_bucket_location(Bucket=self.bucket_name)
+            file_stream = io.BytesIO(file_bytes)
+            await s3_client.upload_fileobj(
+                file_stream,
+                self.bucket_name,
+                s3_key,
+                ExtraArgs=extra_args
+            )
+            region = bucket_location.get('LocationConstraint')
+            if region is None:  # us-east-1 returns None for LocationConstraint
+                s3_url = f"https://{self.bucket_name}.s3.amazonaws.com/{s3_key}"
+            else:
+                s3_url = f"https://{self.bucket_name}.s3-{region}.amazonaws.com/{s3_key}"
+            return s3_url
+    
+    async def upload_product_bytes(self, request: S3UploadFileBytesRequest) -> dict[str, list[str]]:
+        """
+        Uploads binary image data for multiple products to S3.
+        Returns a dictionary mapping product codes to lists of S3 URLs.
+        """
+        user = request.user
+        tenant = request.tenant
+        result_urls: dict[str, list[str]] = {}
+        
+        for product in request.products:
+            product_code = product.product_code
+            base_directory = self.get_oaas_directory(tenant, user, product_code)
+            result_urls[product_code] = []
+            
+            timestamp = time.strftime('%Y%m%d_%H%M%S')
+            for image in product.images:
+                try:
+                    ext = image.image_name.split('.')[-1]
+                    file_name = image.image_name.split('.')[0]
+                    image_name = f"{file_name}_{timestamp}.{ext}"
+                    image_bytes = base64.b64decode(image.image_bytes)
+                    s3_url = await self.upload_file_bytes(
+                        file_bytes=image_bytes,
+                        file_name=image_name,
+                        directory=base_directory,
+                        content_type_str=image.image_type.value
+                    )
+                    result_urls[product_code].append(s3_url)
+                except Exception as e:
+                    print(f"Error uploading {image.image_name} for product {product_code}: {str(e)}")
+                    # Continue with other images even if one fails
+        
+        return result_urls

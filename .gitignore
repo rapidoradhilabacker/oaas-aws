@@ -5,3 +5,4 @@ venv/*
 *.pyc
 uvicorn.log
 *.sh
+tmp.log

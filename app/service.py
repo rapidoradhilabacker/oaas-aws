@@ -2,11 +2,11 @@
 
 from enum import Enum
 import hashlib
-import aioboto3
+import aioboto3 # type: ignore
 from fastapi import UploadFile
 import io
 import typing
-import aiohttp # Required for downloading files from URLs
+import aiohttp # type: ignore # Required for downloading files from URLs
 from urllib.parse import urlparse
 import os # For os.path.basename
 from zipfile import ZipFile
@@ -340,10 +340,6 @@ class S3FileService:
             return s3_url
     
     async def upload_product_bytes(self, request: S3UploadFileBytesRequest) -> dict[str, list[str]]:
-        """
-        Uploads binary image data for multiple products to S3.
-        Returns a dictionary mapping product codes to lists of S3 URLs.
-        """
         user = request.user
         tenant = request.tenant
         result_urls: dict[str, list[str]] = {}

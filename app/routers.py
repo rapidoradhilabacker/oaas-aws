@@ -2,7 +2,7 @@
 
 import os
 import logging
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from app.service import S3FileService
 from app.schemas import (
     OaasFolderRequest,
@@ -11,6 +11,8 @@ from app.schemas import (
     S3UploadResponse,
     S3UploadFileBytesRequest
 )
+from app.auth import get_current_user, Trace
+
 router = APIRouter()
 
 # Read configuration from environment variables
@@ -23,7 +25,8 @@ s3_service = S3FileService(S3_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_
 
 @router.post("/upload/oaas/folder", response_model=S3UploadResponse)
 async def upload_oaas_folder(
-    request: OaasFolderRequest
+    request: OaasFolderRequest,
+    trace: Trace = Depends(get_current_user)
 ):
     """
     Upload a ZIP file to S3 and extract its contents maintaining folder structure.
@@ -41,7 +44,8 @@ async def upload_oaas_folder(
 
 @router.post("/upload/oaas/files", response_model=S3UploadResponse)
 async def upload_oaas_files(
-    request: OaasFileRequest
+    request: OaasFileRequest,
+    trace: Trace = Depends(get_current_user)
 ):
     """
     Upload individual files to S3 under the directory provided in request.
@@ -58,7 +62,8 @@ async def upload_oaas_files(
 
 @router.post("/upload/oaas/files/v2", response_model=S3UploadResponse)
 async def upload_oaas_files_v2(
-    request: S3UploadFileBytesRequest
+    request: S3UploadFileBytesRequest,
+    trace: Trace = Depends(get_current_user)
 ):
     """
     Upload binary image data for multiple products to S3.

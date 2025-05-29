@@ -1,13 +1,21 @@
 from fastapi import Header, HTTPException
 from fastapi import Request
 from http import HTTPStatus
-from app.models import GenericResponse
-from app.enum import ErrorCode
-from app.tracing import get_trace, tracer
-from app.config import JWT_SECRET_KEY, JWT_ALGORITHM, SERVICE_ID
+from app.schemas import GenericResponse, Trace, ErrorCode
+from app.tracing import tracer
+from app.config import SETTINGS
 import jwt
-from app.models import Trace
 from fastapi import Depends
+
+async def get_trace(
+    x_request_id: str = Header(),
+    x_device_id: str = Header()
+) -> Trace:
+    return Trace(
+        request_id=x_request_id,
+        device_id=x_device_id,
+
+    )
 
 
 async def get_current_user(
@@ -28,37 +36,26 @@ async def get_current_user(
     }
 
     with tracer.start_as_current_span("get_request_param", attributes=attributes) as span:
+        error_response = GenericResponse.get_error_response(
+            error_code=ErrorCode.ERROR_CODE_AUTH_ERROR,
+            customer_message='Invalid Token',
+            debug_info={}
+        )
         credentials_exception = HTTPException(
             status_code=HTTPStatus.UNAUTHORIZED,
-            detail=GenericResponse.get_error_response(
-                    error_code=ErrorCode.ERROR_CODE_AUTH_ERROR,
-                    customer_message='Invalid Token',
-                    debug_info={}
-                ),
+            detail=error_response.dict(),  # Convert to dictionary for JSON serialization
         )
         if not authorization:
             raise credentials_exception
         try:
             token = authorization.split("Bearer ")[1]
-            payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+            payload = jwt.decode(token, SETTINGS.JWT_SECRET_KEY, algorithms=[SETTINGS.JWT_ALGORITHM])
             username: str = payload.get("sub")
             if username is None:
                 raise credentials_exception
-            elif username != SERVICE_ID:
+            elif username != SETTINGS.SERVICE_ID:
                 raise credentials_exception
             
         except Exception:
             raise credentials_exception
         return trace
-
-
-async def get_user_account_model(identifier: str| None = None, uuid: None = None) -> UserAccountModel | None:
-    q = Q()
-    if identifier:
-        q &= Q(mobile_no=identifier)
-    if uuid:
-        q &=Q(id=uuid) 
-    user_obj = await UserAccountModel.filter(q).first()
-    if user_obj is None:
-        return None
-    return user_obj

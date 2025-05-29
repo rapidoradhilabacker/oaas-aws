@@ -153,3 +153,24 @@ class GenericResponse(CamelModel):
 class Trace(BaseModel):
     request_id: str
     device_id: str
+
+class TokenRequest(BaseModel):
+    """
+    Request model for generating authentication tokens
+    """
+    service_id: str
+
+class TokenResponse(BaseModel):
+    """
+    Response model for token generation endpoint
+    """
+    token: str
+    expires_at: str
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "expires_at": "2025-08-29T06:54:39Z"
+            }
+        }

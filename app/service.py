@@ -319,7 +319,7 @@ class S3FileService:
         Optionally sets the Content-Type of the S3 object.
         """
         s3_key = self._generate_key(directory, file_name)
-        extra_args = {}
+        extra_args = {'ACL': 'public-read'}
         if content_type_str:
             extra_args['ContentType'] = content_type_str
         
